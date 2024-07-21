@@ -232,7 +232,7 @@ static bool ttf_get_glyph_dsc_cb(const lv_font_t * font, lv_font_glyph_dsc_t * d
     if ( !dsc->cache_size ) /* no cache, do everything directly */
     {
         uint32_t g1 = dsc_out->gid.index;
-        tiny_ttf_glyph_cache_data_t data;
+        tiny_ttf_glyph_cache_data_t data = { .unicode = unicode_letter};
         tiny_ttf_glyph_cache_create_cb(&data, dsc);
         *dsc_out = data.glyph_dsc;
 
@@ -247,6 +247,8 @@ static bool ttf_get_glyph_dsc_cb(const lv_font_t * font, lv_font_glyph_dsc_t * d
                                                 0.5f); /*Horizontal space required by the glyph in [px]*/
             }
         }
+
+        dsc_out->entry = NULL;
         return true;
     }
 
@@ -259,13 +261,13 @@ static bool ttf_get_glyph_dsc_cb(const lv_font_t * font, lv_font_glyph_dsc_t * d
     if(entry == NULL) {
         LV_LOG_ERROR("cache not allocated");
         return false;
-    } else
-    {
-        kerncachehit1++;
-        tiny_ttf_glyph_cache_data_t * data = lv_cache_entry_get_data(entry);
-        *dsc_out = data->glyph_dsc;
-        lv_cache_release(dsc->glyph_cache, entry, NULL);
     }
+    int adv_w;
+    kerncachehit1++;
+    tiny_ttf_glyph_cache_data_t * data = lv_cache_entry_get_data(entry);
+    *dsc_out = data->glyph_dsc;
+    adv_w = data->adv_w;
+    lv_cache_release(dsc->glyph_cache, entry, NULL);
 
     /*Kerning correction*/
     if(font->kerning == LV_FONT_KERNING_NORMAL &&
@@ -282,7 +284,7 @@ static bool ttf_get_glyph_dsc_cb(const lv_font_t * font, lv_font_glyph_dsc_t * d
 
         if(g2) {
             int k = stbtt_GetGlyphKernAdvance(&dsc->info, g1, g2);
-            dsc_out->adv_w = (uint16_t)floor((((float)dsc_out->adv_w + (float)k) * dsc->scale) +
+            dsc_out->adv_w = (uint16_t)floor((((float)adv_w + (float)k) * dsc->scale) +
                                              0.5f); /*Horizontal space required by the glyph in [px]*/
         }
     }
@@ -319,11 +321,16 @@ static const void * ttf_get_glyph_bitmap_cb(lv_font_glyph_dsc_t * g_dsc, lv_draw
 
     if ( !dsc->cache_size ) /* no cache, do everything directly */
     {
-        tiny_ttf_cache_data_t data;
-        if ( tiny_ttf_draw_data_cache_create_cb(&data, &data) )
-            return data.draw_buf;
+        tiny_ttf_cache_data_t cache_data = {
+            .glyph_index = glyph_index,
+            .size = font->line_height,
+        };
+        if ( tiny_ttf_draw_data_cache_create_cb(&cache_data, &data) )
+            return cache_data.draw_buf;
         else
+        {
             return NULL;
+        }
     }
 
     lv_cache_entry_t * entry = lv_cache_acquire_or_create(dsc->draw_data_cache, &search_key, (void *)&data);
@@ -474,6 +481,8 @@ static bool tiny_ttf_glyph_cache_create_cb(tiny_ttf_glyph_cache_data_t * node, v
 
     int g1 = stbtt_FindGlyphIndex(&dsc->info, (int)unicode_letter);
     if(g1 == 0) {
+            LV_LOG_WARN("glyph nf");
+
         /* Glyph not found */
         return false;
     }
