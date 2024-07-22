@@ -228,13 +228,18 @@ static bool ttf_get_glyph_dsc_cb(const lv_font_t * font, lv_font_glyph_dsc_t * d
     }
 
     ttf_font_desc_t * dsc = (ttf_font_desc_t *)font->dsc;
+    tiny_ttf_glyph_cache_data_t search_key = {
+        .unicode = unicode_letter,
+    };
+
+    int adv_w;
 
     if ( !dsc->cache_size ) /* no cache, do everything directly */
     {
-        uint32_t g1 = dsc_out->gid.index;
-        tiny_ttf_glyph_cache_data_t data = { .unicode = unicode_letter};
-        tiny_ttf_glyph_cache_create_cb(&data, dsc);
-        *dsc_out = data.glyph_dsc;
+        uint32_t g1 = stbtt_FindGlyphIndex(&dsc->info, (int)unicode_letter);
+        tiny_ttf_glyph_cache_create_cb(&search_key, dsc);
+        *dsc_out = search_key.glyph_dsc;
+        adv_w = search_key.adv_w;
 
         /*Kerning correction*/
         if(font->kerning == LV_FONT_KERNING_NORMAL &&
@@ -243,7 +248,7 @@ static bool ttf_get_glyph_dsc_cb(const lv_font_t * font, lv_font_glyph_dsc_t * d
             int g2 = stbtt_FindGlyphIndex(&dsc->info, (int)unicode_letter_next); /* not using cache, only do glyph id lookup */
             if(g2) {
                 int k = stbtt_GetGlyphKernAdvance(&dsc->info, g1, g2);
-                dsc_out->adv_w = (uint16_t)floor((((float)dsc_out->adv_w + (float)k) * dsc->scale) +
+                dsc_out->adv_w = (uint16_t)floor((((float)adv_w + (float)k) * dsc->scale) +
                                                 0.5f); /*Horizontal space required by the glyph in [px]*/
             }
         }
@@ -252,17 +257,12 @@ static bool ttf_get_glyph_dsc_cb(const lv_font_t * font, lv_font_glyph_dsc_t * d
         return true;
     }
 
-    tiny_ttf_glyph_cache_data_t search_key = {
-        .unicode = unicode_letter,
-    };
-
     lv_cache_entry_t * entry = lv_cache_acquire_or_create(dsc->glyph_cache, &search_key, (void *)dsc);
 
     if(entry == NULL) {
         LV_LOG_ERROR("cache not allocated");
         return false;
     }
-    int adv_w;
     kerncachehit1++;
     tiny_ttf_glyph_cache_data_t * data = lv_cache_entry_get_data(entry);
     *dsc_out = data->glyph_dsc;
@@ -281,7 +281,6 @@ static bool ttf_get_glyph_dsc_cb(const lv_font_t * font, lv_font_glyph_dsc_t * d
         tiny_ttf_glyph_cache_data_t * data_next = lv_cache_entry_get_data(entry_next);
         g2 = data_next->glyph_dsc.gid.index;
         lv_cache_release(dsc->glyph_cache, entry_next, NULL);
-
         if(g2) {
             int k = stbtt_GetGlyphKernAdvance(&dsc->info, g1, g2);
             dsc_out->adv_w = (uint16_t)floor((((float)adv_w + (float)k) * dsc->scale) +
@@ -323,8 +322,7 @@ static const void * ttf_get_glyph_bitmap_cb(lv_font_glyph_dsc_t * g_dsc, lv_draw
     {
         if ( tiny_ttf_draw_data_cache_create_cb(&search_key, &data) )
         {
-            printf("Got draw data\n");
-            g_dsc->entry = search_key.draw_buf; /* use the cache entry to store the buffer if no cache specified */
+            g_dsc->entry = (lv_cache_entry_t *)search_key.draw_buf; /* use the cache entry to store the buffer if no cache specified */
             return g_dsc->entry;
         }
         else
@@ -352,7 +350,7 @@ static void ttf_release_glyph_cb(const lv_font_t * font, lv_font_glyph_dsc_t * g
     ttf_font_desc_t * dsc = (ttf_font_desc_t *)font->dsc;
     if ( !dsc->cache_size ) /* no cache, do everything directly */
     {
-        lv_draw_buf_destroy_user(font_draw_buf_handlers, g_dsc->entry );
+        lv_draw_buf_destroy_user(font_draw_buf_handlers, (lv_draw_buf_t*)g_dsc->entry );
     }
     else
     {
@@ -486,8 +484,7 @@ static bool tiny_ttf_glyph_cache_create_cb(tiny_ttf_glyph_cache_data_t * node, v
 
     int g1 = stbtt_FindGlyphIndex(&dsc->info, (int)unicode_letter);
     if(g1 == 0) {
-            LV_LOG_WARN("glyph nf");
-
+        LV_LOG_WARN("glyph nf");
         /* Glyph not found */
         return false;
     }
@@ -583,8 +580,6 @@ static bool tiny_ttf_draw_data_cache_create_cb(tiny_ttf_cache_data_t * node, voi
     }
 
     lv_draw_buf_clear(draw_buf, NULL);
-
-    printf("Create draw data %d %d %d %f %d\n", w, h, g1, data->dsc->scale, info->numGlyphs);
 
     uint32_t stride = draw_buf->header.stride;
     stbtt_MakeGlyphBitmap(info, draw_buf->data, w, h, stride, data->dsc->scale, data->dsc->scale, g1);
