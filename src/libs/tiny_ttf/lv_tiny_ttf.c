@@ -321,12 +321,12 @@ static const void * ttf_get_glyph_bitmap_cb(lv_font_glyph_dsc_t * g_dsc, lv_draw
 
     if ( !dsc->cache_size ) /* no cache, do everything directly */
     {
-        tiny_ttf_cache_data_t cache_data = {
-            .glyph_index = glyph_index,
-            .size = font->line_height,
-        };
-        if ( tiny_ttf_draw_data_cache_create_cb(&cache_data, &data) )
-            return cache_data.draw_buf;
+        if ( tiny_ttf_draw_data_cache_create_cb(&search_key, &data) )
+        {
+            printf("Got draw data\n");
+            g_dsc->entry = search_key.draw_buf; /* use the cache entry to store the buffer if no cache specified */
+            return g_dsc->entry;
+        }
         else
         {
             return NULL;
@@ -348,14 +348,19 @@ static const void * ttf_get_glyph_bitmap_cb(lv_font_glyph_dsc_t * g_dsc, lv_draw
 static void ttf_release_glyph_cb(const lv_font_t * font, lv_font_glyph_dsc_t * g_dsc)
 {
     LV_ASSERT_NULL(font);
-    if(g_dsc->entry == NULL) {
-        return;
-    }
+
     ttf_font_desc_t * dsc = (ttf_font_desc_t *)font->dsc;
     if ( !dsc->cache_size ) /* no cache, do everything directly */
+    {
         lv_draw_buf_destroy_user(font_draw_buf_handlers, g_dsc->entry );
+    }
     else
+    {
+        if(g_dsc->entry == NULL) {
+            return;
+        }
         lv_cache_release(dsc->draw_data_cache, g_dsc->entry, NULL);
+    }
     g_dsc->entry = NULL;
 }
 
@@ -530,6 +535,31 @@ static lv_cache_compare_res_t tiny_ttf_glyph_cache_compare_cb(const tiny_ttf_gly
     return 0;
 }
 
+#if 0
+struct stbtt_fontinfo {
+    void * userdata;
+#ifdef STBTT_STREAM_TYPE
+    STBTT_STREAM_TYPE data;
+#else
+    unsigned char * data;             // pointer to .ttf file
+#endif
+    int              fontstart;         // offset of start of font
+
+    int numGlyphs;                     // number of glyphs, needed for range checking
+
+    int loca, head, glyf, hhea, hmtx, kern, gpos, svg; // table locations as offset from start of .ttf
+    int index_map;                     // a cmap mapping for our chosen character encoding
+    int indexToLocFormat;              // format needed to map from glyph index to glyph
+
+    stbtt__buf cff;                    // cff font data
+    stbtt__buf charstrings;            // the charstring index
+    stbtt__buf gsubrs;                 // global charstring subroutines index
+    stbtt__buf subrs;                  // private charstring subroutines index
+    stbtt__buf fontdicts;              // array of font dicts
+    stbtt__buf fdselect;               // map from glyph to fontdict
+};
+#endif
+
 static bool tiny_ttf_draw_data_cache_create_cb(tiny_ttf_cache_data_t * node, void * user_data)
 {
     //ttf_font_desc_t * dsc = (ttf_font_desc_t *)user_data;
@@ -554,6 +584,8 @@ static bool tiny_ttf_draw_data_cache_create_cb(tiny_ttf_cache_data_t * node, voi
 
     lv_draw_buf_clear(draw_buf, NULL);
 
+    printf("Create draw data %d %d %d %f %d\n", w, h, g1, data->dsc->scale, info->numGlyphs);
+
     uint32_t stride = draw_buf->header.stride;
     stbtt_MakeGlyphBitmap(info, draw_buf->data, w, h, stride, data->dsc->scale, data->dsc->scale, g1);
 
@@ -564,7 +596,6 @@ static bool tiny_ttf_draw_data_cache_create_cb(tiny_ttf_cache_data_t * node, voi
 static void tiny_ttf_draw_data_cache_free_cb(tiny_ttf_cache_data_t * node, void * user_data)
 {
     LV_UNUSED(user_data);
-
     lv_draw_buf_destroy_user(font_draw_buf_handlers, node->draw_buf);
 }
 
