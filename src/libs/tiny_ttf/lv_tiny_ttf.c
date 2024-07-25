@@ -530,37 +530,10 @@ static lv_cache_compare_res_t tiny_ttf_glyph_cache_compare_cb(const tiny_ttf_gly
     }
 
     return 0;
-}
-
-#if 0
-struct stbtt_fontinfo {
-    void * userdata;
-#ifdef STBTT_STREAM_TYPE
-    STBTT_STREAM_TYPE data;
-#else
-    unsigned char * data;             // pointer to .ttf file
-#endif
-    int              fontstart;         // offset of start of font
-
-    int numGlyphs;                     // number of glyphs, needed for range checking
-
-    int loca, head, glyf, hhea, hmtx, kern, gpos, svg; // table locations as offset from start of .ttf
-    int index_map;                     // a cmap mapping for our chosen character encoding
-    int indexToLocFormat;              // format needed to map from glyph index to glyph
-
-    stbtt__buf cff;                    // cff font data
-    stbtt__buf charstrings;            // the charstring index
-    stbtt__buf gsubrs;                 // global charstring subroutines index
-    stbtt__buf subrs;                  // private charstring subroutines index
-    stbtt__buf fontdicts;              // array of font dicts
-    stbtt__buf fdselect;               // map from glyph to fontdict
-};
-#endif
+}   
 
 static bool tiny_ttf_draw_data_cache_create_cb(tiny_ttf_cache_data_t * node, void * user_data)
 {
-    //ttf_font_desc_t * dsc = (ttf_font_desc_t *)user_data;
-
     lv_draw_cache_user_data_t * data = (lv_draw_cache_user_data_t *)user_data;
 
     const stbtt_fontinfo * info = (const stbtt_fontinfo *)&data->dsc->info;
@@ -569,9 +542,19 @@ static bool tiny_ttf_draw_data_cache_create_cb(tiny_ttf_cache_data_t * node, voi
         /* Glyph not found */
         return false;
     }
+
+#if 1
+    ttf_font_desc_t * dsc = (ttf_font_desc_t *)data->dsc;
+    int x1, y1, x2, y2;
+    stbtt_GetGlyphBitmapBox(info, g1, dsc->scale, dsc->scale, &x1, &y1, &x2, &y2);
+    int w, h;
+    w = x2 - x1 + 1;
+    h = y2 - y1 + 1;
+#else
     int w, h;
     w = data->x2 - data->x1 + 1;
     h = data->y2 - data->y1 + 1;
+#endif
 
     lv_draw_buf_t * draw_buf = lv_draw_buf_create_user(font_draw_buf_handlers, w, h, LV_COLOR_FORMAT_A8, LV_STRIDE_AUTO);
     if(NULL == draw_buf) {
