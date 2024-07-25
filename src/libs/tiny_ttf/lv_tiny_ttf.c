@@ -3,6 +3,8 @@
 *
 */
 
+#define PRECALC
+
 /*********************
  *      INCLUDES
  *********************/
@@ -76,10 +78,12 @@ typedef struct _tiny_ttf_glyph_cache_data_t {
     lv_font_glyph_dsc_t glyph_dsc;
 } tiny_ttf_glyph_cache_data_t;
 
+#ifdef PRECALC
 typedef struct _lv_draw_cache_user_data_t {
     int x1, x2, y1, y2;
     ttf_font_desc_t * dsc;
 } lv_draw_cache_user_data_t;
+#endif
 
 typedef struct _lv_tiny_ttf_cache_data_t {
     uint32_t glyph_index;
@@ -303,8 +307,17 @@ static const void * ttf_get_glyph_bitmap_cb(lv_font_glyph_dsc_t * g_dsc, lv_draw
         .size = font->line_height,
     };
 
+#ifdef PRECALC
+#if 1
+    lv_draw_cache_user_data_t data = {
+        .x1 = g_dsc->ofs_x,
+        .y1 = -g_dsc->ofs_y + 1 - g_dsc->box_h,
+        .x2 = g_dsc->ofs_x - 1 + g_dsc->box_w,
+        .y2 = -g_dsc->ofs_y,
+        .dsc = (ttf_font_desc_t *)dsc,
+    };
+#else
     int x1, x2, y1, y2;
-
     y2 = -g_dsc->ofs_y;
     x1 = g_dsc->ofs_x;
     x2 = x1 - 1 + g_dsc->box_w;
@@ -317,10 +330,19 @@ static const void * ttf_get_glyph_bitmap_cb(lv_font_glyph_dsc_t * g_dsc, lv_draw
         .y2 = y2,
         .dsc = (ttf_font_desc_t *)dsc,
     };
+#endif
+#else
+   void * data=(void *)font->dsc;
+#endif
 
+#ifdef CACHE0
     if ( !dsc->cache_size ) /* no cache, do everything directly */
     {
+#ifdef PRECALC
         if ( tiny_ttf_draw_data_cache_create_cb(&search_key, &data) )
+#else
+        if ( tiny_ttf_draw_data_cache_create_cb(&search_key, (void *)font->dsc) )
+#endif
         {
             g_dsc->entry = (lv_cache_entry_t *)search_key.draw_buf; /* use the cache entry to store the buffer if no cache specified */
             return g_dsc->entry;
@@ -330,9 +352,13 @@ static const void * ttf_get_glyph_bitmap_cb(lv_font_glyph_dsc_t * g_dsc, lv_draw
             return NULL;
         }
     }
+#endif
 
+#ifdef PRECALC
     lv_cache_entry_t * entry = lv_cache_acquire_or_create(dsc->draw_data_cache, &search_key, (void *)&data);
-
+#else
+    lv_cache_entry_t * entry = lv_cache_acquire_or_create(dsc->draw_data_cache, &search_key, (void *)font->dsc);
+#endif
     if(entry == NULL) {
         LV_LOG_ERROR("cache not allocated");
         return NULL;
@@ -348,11 +374,13 @@ static void ttf_release_glyph_cb(const lv_font_t * font, lv_font_glyph_dsc_t * g
     LV_ASSERT_NULL(font);
 
     ttf_font_desc_t * dsc = (ttf_font_desc_t *)font->dsc;
+#ifdef CACHE0
     if ( !dsc->cache_size ) /* no cache, do everything directly */
     {
         lv_draw_buf_destroy_user(font_draw_buf_handlers, (lv_draw_buf_t*)g_dsc->entry );
     }
     else
+#endif
     {
         if(g_dsc->entry == NULL) {
             return;
@@ -534,26 +562,26 @@ static lv_cache_compare_res_t tiny_ttf_glyph_cache_compare_cb(const tiny_ttf_gly
 
 static bool tiny_ttf_draw_data_cache_create_cb(tiny_ttf_cache_data_t * node, void * user_data)
 {
-    lv_draw_cache_user_data_t * data = (lv_draw_cache_user_data_t *)user_data;
-
-    const stbtt_fontinfo * info = (const stbtt_fontinfo *)&data->dsc->info;
     int g1 = (int)node->glyph_index;
     if(g1 == 0) {
         /* Glyph not found */
         return false;
     }
 
-#if 1
-    ttf_font_desc_t * dsc = (ttf_font_desc_t *)data->dsc;
+#ifdef PRECALC
+    lv_draw_cache_user_data_t * data = (lv_draw_cache_user_data_t *)user_data;
+    const stbtt_fontinfo * info = (const stbtt_fontinfo *)&data->dsc->info;
+    int w, h;
+    w = data->x2 - data->x1 + 1;
+    h = data->y2 - data->y1 + 1;
+#else
+    ttf_font_desc_t * dsc = (ttf_font_desc_t *)user_data;
+    const stbtt_fontinfo * info = (const stbtt_fontinfo *)&dsc->info;
     int x1, y1, x2, y2;
     stbtt_GetGlyphBitmapBox(info, g1, dsc->scale, dsc->scale, &x1, &y1, &x2, &y2);
     int w, h;
     w = x2 - x1 + 1;
     h = y2 - y1 + 1;
-#else
-    int w, h;
-    w = data->x2 - data->x1 + 1;
-    h = data->y2 - data->y1 + 1;
 #endif
 
     lv_draw_buf_t * draw_buf = lv_draw_buf_create_user(font_draw_buf_handlers, w, h, LV_COLOR_FORMAT_A8, LV_STRIDE_AUTO);
@@ -565,8 +593,11 @@ static bool tiny_ttf_draw_data_cache_create_cb(tiny_ttf_cache_data_t * node, voi
     lv_draw_buf_clear(draw_buf, NULL);
 
     uint32_t stride = draw_buf->header.stride;
+#ifdef PRECALC
     stbtt_MakeGlyphBitmap(info, draw_buf->data, w, h, stride, data->dsc->scale, data->dsc->scale, g1);
-
+#else
+    stbtt_MakeGlyphBitmap(info, draw_buf->data, w, h, stride, dsc->scale, dsc->scale, g1);
+#endif
     node->draw_buf = draw_buf;
     return true;
 }
