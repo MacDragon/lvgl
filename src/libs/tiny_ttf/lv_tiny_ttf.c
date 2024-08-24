@@ -131,7 +131,7 @@ static void lv_tiny_ttf_cache_create(ttf_font_desc_t * dsc);
 void lv_tiny_ttf_set_size(lv_font_t * font, int32_t font_size)
 {
     if(font_size <= 0) {
-        LV_LOG_ERROR("invalid font size: %"PRIx32, font_size);
+        LV_LOG_ERROR("invalid font size: %"LV_PRIx32, font_size);
         return;
     }
     ttf_font_desc_t * dsc = (ttf_font_desc_t *)font->dsc;
@@ -558,7 +558,7 @@ static lv_cache_compare_res_t tiny_ttf_glyph_cache_compare_cb(const tiny_ttf_gly
     }
 
     return 0;
-}   
+}
 
 static bool tiny_ttf_draw_data_cache_create_cb(tiny_ttf_cache_data_t * node, void * user_data)
 {
